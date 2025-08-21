@@ -9,12 +9,13 @@ class Circle {
         this.size = {w: this.radius * 2, h: this.radius*2}
         this.color = color
         this.colorCollision = colorCollision
+        this.colorDraw = color
     }
 
     draw() {
         ctx.beginPath()
         ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2)
-        ctx.fillStyle = this.color
+        ctx.fillStyle = this.colorDraw
         ctx.fill()
         ctx.closePath()
     }
@@ -28,6 +29,7 @@ class Polygon {
      this.points = points // tableau de points relatifs [{x, y}, ...]
      this.color = color
      this.colorCollision = colorCollision
+     this.colorDraw = color
   }
 
   getAbsolutePoints() {
@@ -46,7 +48,7 @@ class Polygon {
             ctx.lineTo(pts[i].x, pts[i].y)
         }
         ctx.closePath()
-        ctx.fillStyle = this.color
+        ctx.fillStyle = this.colorDraw
         ctx.fill()
   }
 
@@ -75,6 +77,58 @@ function collisionDetector (mapSize, subsetDivision, objects) {
     let subsets = subsetDivision[0] * subsetDivision[1]
     let subsetSize = {w: mapSize[0] / subsetDivision[0], h: mapSize[1] / subsetDivision[1]}
 
+    function collisionCircles(c1, c2) {
+        const dx = c1.position.x - c2.position.x
+        const dy = c1.position.y - c2.position.y
+        const distance = Math.hypot(dx, dy)
+        return distance <= c1.radius + c2.radius
+    }
+
+    function projectPolygon(axis, polygon) {
+        let min = Infinity
+        let max = -Infinity
+
+        for (const point of polygon) {
+            const projection = point.x * axis.x + point.y * axis.y
+            if (projection < min) min = projection
+            if (projection > max) max = projection
+        }
+
+        return [min, max]
+    }
+
+    function collisionPolygons(p1, p2) {
+    const polygons = [p1, p2]
+
+    for (let i = 0; i < polygons.length; i++) {
+        const polygon = polygons[i]
+
+        for (let j = 0; j < polygon.length; j++) {
+        const k = (j + 1) % polygon.length
+        const edge = {
+            x: polygon[k].x - polygon[j].x,
+            y: polygon[k].y - polygon[j].y
+        }
+
+        // Axe perpendiculaire
+        const axis = { x: -edge.y, y: edge.x }
+
+        // Projette les 2 polygones sur cet axe
+        const [minA, maxA] = projectPolygon(axis, p1)
+        const [minB, maxB] = projectPolygon(axis, p2)
+
+        // Test de séparation
+        if (maxA < minB || maxB < minA) {
+            return false // pas de collision
+        }
+        }
+    }
+
+    return true // collision détectée
+    }
+
+
+
     for (let i = 0; i < subsets; i++) {
         let multiplyY = 0
         let multiplyX = i
@@ -89,23 +143,76 @@ function collisionDetector (mapSize, subsetDivision, objects) {
         objects.forEach(object => {
             if (object.constructor.name === 'Circle') {
                 if (object.position.x - object.radius >= subset.position.x 
-                && object.position.x - object.radius <= subset.position.x + subset.size.w 
-                && object.position.y - object.radius >= subset.position.y 
-                && object.position.y - object.radius <= subset.position.y + subset.size.h 
-                || object.position.x + object.radius >= subset.position.x 
-                && object.position.x + object.radius <= subset.position.x + subset.size.w 
-                && object.position.y + object.radius >= subset.position.y 
-                && object.position.y + object.radius <= subset.position.y + subset.size.h) {
+                    && object.position.x - object.radius <= subset.position.x + subset.size.w 
+                    && object.position.y - object.radius >= subset.position.y 
+                    && object.position.y - object.radius <= subset.position.y + subset.size.h 
+                    || object.position.x + object.radius >= subset.position.x 
+                    && object.position.x + object.radius <= subset.position.x + subset.size.w 
+                    && object.position.y + object.radius >= subset.position.y 
+                    && object.position.y + object.radius <= subset.position.y + subset.size.h
+                ) {
 
                     subset.items.push(object)
 
+                }
+            } else if (object.constructor.name === 'Polygon') {
+                if (object.position.x >= subset.position.x
+                    && object.position.x <= subset.position.x + subset.size.w 
+                    && object.position.y >= subset.position.y 
+                    && object.position.y <= subset.position.y + subset.size.h 
+                    || object.position.x + object.size.w >= subset.position.x 
+                    && object.position.x + object.size.w <= subset.position.x + subset.size.w 
+                    && object.position.y + object.size.h >= subset.position.y 
+                    && object.position.y + object.size.h <= subset.position.y + subset.size.h
+                ) {
+                    subset.items.push(object)
                 }
             }
         })
         
         set.push(subset)
     }
-    console.log(set)
+
+    set.forEach(subset => {
+        if (subset.items.length > 0) {
+
+            let circles = []
+            let polygons = []
+
+            subset.items.forEach(element => {
+                if (element.constructor.name === 'Circle') {
+                    circles.push(element)
+                } else if (element.constructor.name === 'Polygon') {
+                    polygons.push(element)
+                }
+            })
+
+            if (circles.length > 1) {
+                for (let i = 0; i < circles.length - 1; i++) {
+                    subset.items.forEach(element => {
+                        
+                        if (element !== subset.items[i] && collisionCircles(element, subset.items[i])) {
+                            element.colorDraw = element.colorCollision
+                        }
+                    })
+                }
+            }
+
+            if (polygons.length > 1) {
+                for (let i = 0; i < polygons.length - 1; i++) {
+                    subset.items.forEach(element => {
+                        console.log(element !== subset.items[i])
+
+                        if (element !== subset.items[i] && collisionPolygons(element.getAbsolutePoints(), subset.items[i].getAbsolutePoints())) {
+                            element.colorDraw = element.colorCollision
+                        }
+                    })
+                }
+            }
+            
+
+        }
+    })
 
     return set.forEach(element => {
         ctx.strokeRect(element.position.x, element.position.y, element.size.w, element.size.h)
@@ -113,17 +220,23 @@ function collisionDetector (mapSize, subsetDivision, objects) {
 
 }
 
-const C1 = new Circle({x: 200, y: 400}, 25, 'blue', 'red', undefined)
-const C2 = new Circle({x: 600, y: 400}, 25, 'orange', 'red', undefined)
-const P1 = new Polygon({x: 300, y: 300}, [{x: 0, y: 50}, {x: 25, y: 0}, {x: 50, y: 50}], 'green', 'red', undefined)
+const C1 = new Circle({x: 250, y: 470}, 25, 'blue', 'red', undefined)
+const C2 = new Circle({x: 300, y: 400}, 25, 'orange', 'red', undefined)
+const C3 = new Circle({x: 250, y: 400}, 25, 'green', 'red', undefined)
+const C4 = new Circle({x: 300, y: 470}, 25, 'pink', 'red', undefined)
+const P1 = new Polygon({x: 300, y: 250}, [{x: 0, y: 50}, {x: 25, y: 0}, {x: 50, y: 50}], 'green', 'red', undefined)
+const P2 = new Polygon({x: 340, y: 250}, [{x: 0, y: 50}, {x: 25, y: 0}, {x: 50, y: 50}], 'green', 'red', undefined)
 
 function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    collisionDetector([1400, 700], [7, 4], [C1, C2])
+    collisionDetector([1400, 700], [7, 4], [C1, C2, C3, C4, P1, P2])
   
     C1.draw()
     C2.draw()
+    C3.draw()
+    C4.draw()
     P1.draw()
+    P2.draw()
   
     // requestAnimationFrame(animate)
 }
