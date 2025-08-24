@@ -98,36 +98,130 @@ function collisionDetector (mapSize, subsetDivision, objects) {
     }
 
     function collisionPolygons(p1, p2) {
-    const polygons = [p1, p2]
+        const polygons = [p1, p2]
 
-    for (let i = 0; i < polygons.length; i++) {
-        const polygon = polygons[i]
+        for (let i = 0; i < polygons.length; i++) {
+            const polygon = polygons[i]
 
-        for (let j = 0; j < polygon.length; j++) {
-        const k = (j + 1) % polygon.length
-        const edge = {
-            x: polygon[k].x - polygon[j].x,
-            y: polygon[k].y - polygon[j].y
+            for (let j = 0; j < polygon.length; j++) {
+                const k = (j + 1) % polygon.length
+                const edge = {
+                    x: polygon[k].x - polygon[j].x,
+                    y: polygon[k].y - polygon[j].y
+                }
+
+                // Axe perpendiculaire
+                const axis = { x: -edge.y, y: edge.x }
+
+                // Projette les 2 polygones sur cet axe
+                const [minA, maxA] = projectPolygon(axis, p1)
+                const [minB, maxB] = projectPolygon(axis, p2)
+
+                // Test de séparation
+                if (maxA < minB || maxB < minA) {
+                        return false // pas de collision
+                }
+            }
         }
 
-        // Axe perpendiculaire
-        const axis = { x: -edge.y, y: edge.x }
-
-        // Projette les 2 polygones sur cet axe
-        const [minA, maxA] = projectPolygon(axis, p1)
-        const [minB, maxB] = projectPolygon(axis, p2)
-
-        // Test de séparation
-        if (maxA < minB || maxB < minA) {
-            return false // pas de collision
-        }
-        }
+        return true // collision détectée
     }
 
-    return true // collision détectée
+    function collisionPolygonCircle(polygon, circle) {
+        const points = polygon
+        const cx = circle.position.x
+        const cy = circle.position.y
+        const r = circle.radius
+        const edges = []
+        let boolean = false
+
+        function getSize (points) {
+            let ptsX = []
+            let ptsY = []
+
+            points.forEach(point => {
+                ptsX.push(point.x)
+                ptsY.push(point.y)
+            })
+
+            let pointXMin = Math.min(...ptsX)
+            let pointXMax = Math.max(...ptsX)
+            let pointYMin = Math.min(...ptsY)
+            let pointYMax = Math.max(...ptsY)
+
+            return {x: {min: pointXMin, max: pointXMax}, y: {min: pointYMin, max: pointYMax}}
+        }
+
+        // Construction des différentes arrêtes
+        for (let i = 0; i < points.length; i++) {
+            let edge = {}
+
+            if (i < points.length - 1) {
+                let a = points[i + 1].x - points[i].x
+                let b = points[i + 1].y - points[i].y
+                let xm = points[i].x + ((points[i + 1].x - points[i].x) / 2)
+                let ym = points[i].y + ((points[i + 1].y - points[i].y) / 2)
+
+                edge.points = [{x: points[i].x, y: points[i].y}, {x: points[i + 1].x, y: points[i + 1].y}]
+                edge.dist = Math.hypot(a, b)
+                edge.middle = {x: xm, y: ym}
+                edge.size = getSize(edge.points)
+
+                edges.push(edge)
+            } else {
+                let a = points[0].x - points[i].x
+                let b = points[0].y - points[i].y
+                let xm = points[0].x - ((points[0].x - points[i].x) / 2)
+                let ym = points[0].y - ((points[0].y - points[i].y) / 2)
+
+                edge.points = [{x: points[i].x, y: points[i].y}, {x: points[0].x, y: points[0].y}]
+                edge.dist = Math.hypot(a, b)
+                edge.middle = {x: xm, y: ym}
+                edge.size = getSize(edge.points)
+
+                edges.push(edge)
+            }
+
+        }
+
+        for (edge of edges) {
+            let a = circle.position.x - edge.middle.x
+            let b = circle.position.y - edge.middle.y
+            let hypotenuse = Math.hypot(a, b)
+            let opposite = Math.sin(angleABC(circle.position.x, circle.position.y, edge.middle.x, edge.middle.y, edge.points[0].x, edge.points[0].y)) * hypotenuse
+
+            function angleABC(ax, ay, bx, by, cx, cy) {
+                const abx = ax - bx
+                const aby = ay - by
+                const cbx = cx - bx
+                const cby = cy - by
+
+                const dot = abx * cbx + aby * cby
+                const magAB = Math.hypot(abx, aby)
+                const magCB = Math.hypot(cbx, cby)
+
+                const cosTheta = dot / (magAB * magCB)
+                return Math.acos(cosTheta) // en radians
+            }
+
+
+            if (
+                circle.position.x + circle.radius >= edge.size.x.min
+                && circle.position.x - circle.radius <= edge.size.x.max
+                && circle.position.y + circle.radius >= edge.size.y.min
+                && circle.position.y - circle.radius <= edge.size.y.max
+                && Math.abs(opposite) <= circle.radius
+            ) {
+                console.log(Math.abs(opposite))
+                boolean = true 
+                break
+            } else {
+                boolean = false
+            }
+        }
+
+        return boolean
     }
-
-
 
     for (let i = 0; i < subsets; i++) {
         let multiplyY = 0
@@ -189,22 +283,29 @@ function collisionDetector (mapSize, subsetDivision, objects) {
 
             if (circles.length > 1) {
                 for (let i = 0; i < circles.length - 1; i++) {
-                    subset.items.forEach(element => {
+                    circles.forEach(circle => {
                         
-                        if (element !== subset.items[i] && collisionCircles(element, subset.items[i])) {
-                            element.colorDraw = element.colorCollision
+                        if (circle !== circles[i] && collisionCircles(circle, circles[i])) {
+                            circle.colorDraw = circle.colorCollision
                         }
                     })
                 }
             }
 
-            if (polygons.length > 1) {
-                for (let i = 0; i < polygons.length - 1; i++) {
+            if (polygons.length > 0) {
+                for (let i = 0; i < polygons.length; i++) {
                     subset.items.forEach(element => {
-                        console.log(element !== subset.items[i])
 
-                        if (element !== subset.items[i] && collisionPolygons(element.getAbsolutePoints(), subset.items[i].getAbsolutePoints())) {
+                        if (element.constructor.name === 'Polygon' && element !== polygons[i] && collisionPolygons(element.getAbsolutePoints(), polygons[i].getAbsolutePoints())) {
                             element.colorDraw = element.colorCollision
+                        }
+
+                        if (circles.length > 0) {
+                            circles.forEach(circle => {
+                                if (element.constructor.name === 'Polygon' && collisionPolygonCircle(element.getAbsolutePoints(), circle)) {
+                                    element.colorDraw = element.colorCollision
+                                }
+                            })
                         }
                     })
                 }
@@ -223,9 +324,14 @@ function collisionDetector (mapSize, subsetDivision, objects) {
 const C1 = new Circle({x: 250, y: 470}, 25, 'blue', 'red', undefined)
 const C2 = new Circle({x: 300, y: 400}, 25, 'orange', 'red', undefined)
 const C3 = new Circle({x: 250, y: 400}, 25, 'green', 'red', undefined)
-const C4 = new Circle({x: 300, y: 470}, 25, 'pink', 'red', undefined)
-const P1 = new Polygon({x: 300, y: 250}, [{x: 0, y: 50}, {x: 25, y: 0}, {x: 50, y: 50}], 'green', 'red', undefined)
-const P2 = new Polygon({x: 340, y: 250}, [{x: 0, y: 50}, {x: 25, y: 0}, {x: 50, y: 50}], 'green', 'red', undefined)
+const C4 = new Circle({x: 400, y: 300}, 25, 'pink', 'red', undefined)
+const P1 = new Polygon({x: 100, y: 100}, [{x: 0, y: 50}, {x: 25, y: 0}, {x: 50, y: 50}], 'green', 'red', undefined)
+const P2 = new Polygon({x: 420, y: 250}, [{x: 0, y: 100}, {x: 100, y: 0}, {x: 100, y: 100}], 'green', 'red', undefined)
+
+document.addEventListener('mousemove', event => {
+    C4.position.x = event.clientX
+    C4.position.y = event.clientY
+})
 
 function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -238,7 +344,7 @@ function animate() {
     P1.draw()
     P2.draw()
   
-    // requestAnimationFrame(animate)
+    requestAnimationFrame(animate)
 }
   
   
